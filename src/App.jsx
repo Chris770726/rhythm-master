@@ -230,7 +230,6 @@ export default function App() {
     engineRef.current.currentBeat = (engineRef.current.currentBeat + 1) % 8; 
   };
 
-  // --- 發放皇冠邏輯獨立出來 ---
   const awardCrown = (patternIndex) => {
     const patternId = RHYTHM_PATTERNS[patternIndex].id;
     const currentBpm = stateRef.current.bpm;
@@ -255,14 +254,17 @@ export default function App() {
     if (beatNumber === 0) {
       engineRef.current.cycleCounter++;
       const currentCycleId = engineRef.current.cycleCounter;
+      const pattern = RHYTHM_PATTERNS[stateRef.current.currentPatternIndex];
+      
+      // 計算該小節總共有幾個音符點點
+      const totalNotes = pattern.beats[0].length + pattern.beats[1].length + pattern.beats[2].length + pattern.beats[3].length;
 
       engineRef.current.activeCycles[currentCycleId] = {
         patternIndex: stateRef.current.currentPatternIndex,
         awarded: false,
-        // 紀錄小節結束時間
         endTime: time + (4 * secondsPerBeat),
-        // 全新邏輯：只要該小節發生早打、晚打、漏打、多打，就會變成 true
-        hasError: false
+        totalNotes: totalNotes,
+        perfectCount: 0 // 記錄該小節打到 Perfect 的數量
       };
 
       Object.keys(engineRef.current.activeCycles).forEach(key => {
@@ -323,12 +325,12 @@ export default function App() {
     
     engineRef.current.actualHits = engineRef.current.actualHits.filter(h => h.time > now - 2);
 
-    // 【全新結算機制】檢查小節是否已完全結束
+    // 【重寫後的皇冠結算】
     Object.values(engineRef.current.activeCycles).forEach(cycle => {
-      // 加上 0.15 秒的緩衝，確保這個小節最後一個音符的打擊容錯判定已經徹底結束
       if (!cycle.awarded && cycle.endTime && now >= cycle.endTime + 0.15) {
-        // 只要這小節沒有任何失誤 (代表所有的圓點都變綠色，或者安全度過休止符)
-        if (!cycle.hasError) {
+        // 判定標準：只要 Perfect 數量等於總音符數 (代表所有圓點都變綠色)
+        // 不管有沒有 Noise, Early, Late 點擊
+        if (cycle.perfectCount === cycle.totalNotes) {
           cycle.awarded = true;
           awardCrown(cycle.patternIndex);
         }
@@ -349,7 +351,6 @@ export default function App() {
       engineRef.current.activeCycles = {};
       
       if(audioCtxRef.current) {
-        // 給予 0.5 秒的暖機時間，讓第一拍有足夠的反應與視覺進場時間
         engineRef.current.nextNoteTime = audioCtxRef.current.currentTime + 0.5; 
       }
       
@@ -404,6 +405,9 @@ export default function App() {
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'perfect' });
         playClick(audioCtxRef.current.currentTime, 'success');
         
+        // 增加該小節的 Perfect 計數
+        if (cycle) cycle.perfectCount++;
+        
         setStats(s => {
           const newStreak = s.streak + 1;
           return { hits: s.hits + 1, streak: newStreak, maxStreak: Math.max(s.maxStreak, newStreak) };
@@ -412,24 +416,18 @@ export default function App() {
 
       } else if (diff < 0) {
         expected.status = 'early';
-        if (cycle) cycle.hasError = true;
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'early' });
         playClick(audioCtxRef.current.currentTime, 'fail');
         setStats(s => ({ ...s, streak: 0 }));
         visualEffectsRef.current.push({ time: Date.now(), type: 'early', x: 200 }); 
       } else {
         expected.status = 'late';
-        if (cycle) cycle.hasError = true;
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'late' });
         playClick(audioCtxRef.current.currentTime, 'fail');
         setStats(s => ({ ...s, streak: 0 }));
         visualEffectsRef.current.push({ time: Date.now(), type: 'late', x: 200 }); 
       }
     } else {
-      const currentCycleId = engineRef.current.cycleCounter;
-      const currentCycle = engineRef.current.activeCycles[currentCycleId];
-      if (currentCycle) currentCycle.hasError = true;
-
       engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'noise' });
       playClick(audioCtxRef.current.currentTime, 'fail');
       setStats(s => ({ ...s, streak: 0 }));
@@ -439,8 +437,6 @@ export default function App() {
 
   const handlePointerDown = (e) => {
     if (e.target.closest('button') || e.target.closest('input')) return;
-    
-    // 防雙重觸發
     const now = Date.now();
     if (now - lastHitTimeRef.current < 50) return;
     lastHitTimeRef.current = now;
@@ -506,8 +502,6 @@ export default function App() {
       if (expected.time < now - 0.1 && !expected.expired && !expected.status) {
          expected.expired = true;
          setStats(s => ({ ...s, streak: 0 })); 
-         const cycle = engineRef.current.activeCycles[expected.cycleId];
-         if (cycle) cycle.hasError = true;
       }
 
       if (x > -50 && x < width + 50) {
@@ -656,7 +650,6 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto hide-scrollbar pb-1 sm:pb-0 w-full sm:w-auto">
-          {/* 延遲補償拉桿 */}
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-[10px] sm:text-xs font-bold text-slate-500">
               設備延遲補償: <span className={latencyOffset > 0 ? 'text-blue-500' : ''}>{latencyOffset > 0 ? `+${latencyOffset}` : latencyOffset}ms</span>
@@ -702,7 +695,6 @@ export default function App() {
                     </span>
                   )}
 
-                  {/* 加上 font-music 強制套用 Google 專業音樂字體 */}
                   <span className={`text-lg sm:text-xl mt-1.5 sm:mt-2 font-music ${currentPatternIndex === index ? 'text-red-500' : 'text-slate-700'}`}>
                     {pattern.symbol}
                   </span>
@@ -712,7 +704,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 觸控打擊感應區 */}
         <div 
           className="flex-1 bg-slate-50 flex flex-col relative p-4 sm:p-6 min-h-[250px] select-none touch-none cursor-pointer"
           onPointerDown={handlePointerDown}
@@ -721,7 +712,6 @@ export default function App() {
           onPointerCancel={handlePointerUp}
           onContextMenu={(e) => e.preventDefault()} 
         >
-          {/* BPM 三段變速按鈕區塊 */}
           <div className="flex justify-between items-end mb-3 relative z-20" onPointerDown={(e) => e.stopPropagation()}>
             <div className="flex items-center bg-white p-1 rounded-full border border-slate-200 shadow-sm shrink-0">
                 
@@ -758,7 +748,7 @@ export default function App() {
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-10 pointer-events-none px-4 text-center">
                 <Pointer className="w-8 h-8 sm:w-10 sm:h-10 mb-3 opacity-50 animate-bounce" />
                 <p className="text-sm sm:text-base font-bold text-slate-500">點選上方譜例，並按下開始訓練</p>
-                <p className="text-[10px] sm:text-xs mt-2 bg-slate-100 px-3 py-1 rounded-full">💡 訓練開始後，點擊此區域任何空白處即可打擊</p>
+                <p className="text-[10px] sm:text-xs mt-2 bg-slate-100 px-3 py-1 rounded-full">💡 只要所有圓點都點成「綠色」就能拿到皇冠！</p>
               </div>
             )}
             
