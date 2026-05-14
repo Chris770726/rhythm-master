@@ -17,17 +17,17 @@ const PATTERNS_DATA = [
   { id: 10, sym: '♬♪.', name: '後附點', offsets: [0, 0.25] },
   { id: 11, sym: '𝄾 ♬', name: '休十六', offsets: [0.5, 0.75] },
   { id: 12, sym: '♬ 𝄾', name: '十六休', offsets: [0, 0.25] },
-  { id: 13, sym: '𝅋♬♬', name: '休三六', offsets: [0.25, 0.5, 0.75] },
-  { id: 14, sym: '♬𝅋♬', name: '中休六', offsets: [0, 0.5, 0.75] },
-  { id: 15, sym: '♬♬𝅋', name: '後休六', offsets: [0, 0.25, 0.5] },
-  { id: 16, sym: '𝅋♪♬', name: '切分休', offsets: [0.25, 0.75] },
-  { id: 17, sym: '𝅋♬𝅋♬', name: '雙反拍', offsets: [0.25, 0.75] },
-  { id: 18, sym: '♬𝅋𝅋♬', name: '首尾六', offsets: [0, 0.75] },
-  { id: 19, sym: '𝅋𝅋♬♬', name: '後半拍', offsets: [0.5, 0.75] },
-  { id: 20, sym: '♬♬𝅋𝅋', name: '前半拍', offsets: [0, 0.25] },
-  { id: 21, sym: '𝅋♬𝅋𝅋', name: '第二音', offsets: [0.25] },
-  { id: 22, sym: '𝅋𝅋♬𝅋', name: '第三音', offsets: [0.5] },
-  { id: 23, sym: '𝅋𝅋𝅋♬', name: '第四音', offsets: [0.75] },
+  { id: 13, sym: '𝄿 ♬♬', name: '休三六', offsets: [0.25, 0.5, 0.75] },
+  { id: 14, sym: '♬ 𝄿 ♬', name: '中休六', offsets: [0, 0.5, 0.75] },
+  { id: 15, sym: '♬♬ 𝄿', name: '後休六', offsets: [0, 0.25, 0.5] },
+  { id: 16, sym: '𝄿 ♪♬', name: '切分休', offsets: [0.25, 0.75] },
+  { id: 17, sym: '𝄿 ♬ 𝄿 ♬', name: '雙反拍', offsets: [0.25, 0.75] },
+  { id: 18, sym: '♬ 𝄾 ♬', name: '首尾六', offsets: [0, 0.75] },
+  { id: 19, sym: '𝄾 ♬♬', name: '後半拍', offsets: [0.5, 0.75] },
+  { id: 20, sym: '♬♬ 𝄾', name: '前半拍', offsets: [0, 0.25] },
+  { id: 21, sym: '𝄿 ♬ 𝄾', name: '第二音', offsets: [0.25] },
+  { id: 22, sym: '𝄾 ♬ 𝄿', name: '第三音', offsets: [0.5] },
+  { id: 23, sym: '𝄾 𝄿 ♬', name: '第四音', offsets: [0.75] },
   { id: 24, sym: '♪‿♪', name: '連結八', offsets: [0] },
   { id: 25, sym: '♬‿♪', name: '前連', offsets: [0, 0.25] },
   { id: 26, sym: '♪‿♬', name: '後連', offsets: [0, 0.75] },
@@ -36,7 +36,7 @@ const PATTERNS_DATA = [
   { id: 29, sym: '‿♬♪', name: '連休二', offsets: [0.25, 0.5] },
   { id: 30, sym: '♬‿♬♪', name: '切分連', offsets: [0, 0.25, 0.75] },
   { id: 31, sym: '♪♬‿♬', name: '後連反', offsets: [0, 0.5, 0.75] },
-  { id: 32, sym: '𝄾', name: '休止', offsets: [] },
+  { id: 32, sym: '𝄽', name: '休止', offsets: [] },
 ];
 
 const RHYTHM_PATTERNS = PATTERNS_DATA.map(p => ({
@@ -57,8 +57,9 @@ export default function App() {
   const [stats, setStats] = useState({ hits: 0, streak: 0, maxStreak: 0 });
   const [showInitOverlay, setShowInitOverlay] = useState(true);
 
-  // 移除 isPressed State，改用 useRef 直接控制 DOM
   const hitAreaRef = useRef(null);
+  // 【關鍵修正 1】用來記錄最後一次敲擊的時間，防止手機雙重觸發 (Double-trigger)
+  const lastHitTimeRef = useRef(0);
 
   // --- 皇冠系統 (依據 patternId + bpm 獨立儲存) ---
   const [crowns, setCrowns] = useState(() => {
@@ -193,28 +194,27 @@ export default function App() {
         osc.type = 'square';
         osc.frequency.setValueAtTime(880, safeTime);
         osc.frequency.exponentialRampToValueAtTime(220, safeTime + 0.05);
-        gainNode.gain.setValueAtTime(0.4, safeTime);
+        gainNode.gain.setValueAtTime(1.2, safeTime); // 將示範音量從 0.4 調大至 1.2
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + 0.05);
       } else if (type === 'success') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(1200, safeTime);
         osc.frequency.setValueAtTime(1600, safeTime + 0.05);
-        gainNode.gain.setValueAtTime(0.4, safeTime);
+        gainNode.gain.setValueAtTime(1.2, safeTime); // 將完美打擊音量從 0.4 調大至 1.2
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + duration);
       } else if (type === 'fail') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(200, safeTime);
         osc.frequency.exponentialRampToValueAtTime(100, safeTime + duration);
-        gainNode.gain.setValueAtTime(0.2, safeTime);
+        gainNode.gain.setValueAtTime(0.8, safeTime); // 將失誤打擊音量從 0.2 調大至 0.8
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + duration);
       } else if (type === 'crown') {
-        // 皇冠專屬音效 (類似升級、獲得道具的琶音)
         duration = 0.8;
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(523.25, safeTime); // C5
-        osc.frequency.exponentialRampToValueAtTime(1046.50, safeTime + 0.1); // C6
-        osc.frequency.setValueAtTime(1318.51, safeTime + 0.15); // E6
-        osc.frequency.exponentialRampToValueAtTime(2093.00, safeTime + 0.4); // C7
+        osc.frequency.setValueAtTime(523.25, safeTime); 
+        osc.frequency.exponentialRampToValueAtTime(1046.50, safeTime + 0.1); 
+        osc.frequency.setValueAtTime(1318.51, safeTime + 0.15); 
+        osc.frequency.exponentialRampToValueAtTime(2093.00, safeTime + 0.4); 
         gainNode.gain.setValueAtTime(0, safeTime);
         gainNode.gain.linearRampToValueAtTime(0.3, safeTime + 0.05);
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + duration);
@@ -235,8 +235,14 @@ export default function App() {
     if (beatNumber === 0) {
       engineRef.current.cycleCounter++;
       const currentCycleId = engineRef.current.cycleCounter;
+
+      // 【關鍵修正 2】在第一拍的時候，直接計算出「這四拍總共有幾個音符」並寫死
+      // 避免手機運算延遲導致判斷提早觸發或條件不一致
+      const pattern = RHYTHM_PATTERNS[stateRef.current.currentPatternIndex];
+      const totalExpectedNotes = pattern.beats[0].length + pattern.beats[1].length + pattern.beats[2].length + pattern.beats[3].length;
+
       engineRef.current.activeCycles[currentCycleId] = {
-        total: 0,
+        total: totalExpectedNotes, 
         perfects: 0,
         mistakes: 0,
         patternIndex: stateRef.current.currentPatternIndex,
@@ -262,10 +268,6 @@ export default function App() {
     if (beatNumber < 4) {
       const pattern = RHYTHM_PATTERNS[stateRef.current.currentPatternIndex];
       const beatPattern = pattern.beats[beatNumber];
-
-      if (engineRef.current.activeCycles[currentCycleId]) {
-        engineRef.current.activeCycles[currentCycleId].total += beatPattern.length;
-      }
 
       beatPattern.forEach(offset => {
         const hitTime = time + (offset * secondsPerBeat);
@@ -319,8 +321,10 @@ export default function App() {
       engineRef.current.expectedBeats = [];
       engineRef.current.cycleCounter = 0;
       engineRef.current.activeCycles = {};
+      
       if(audioCtxRef.current) {
-        engineRef.current.nextNoteTime = audioCtxRef.current.currentTime + 0.1; 
+        // 【關鍵修正 3】給予手機音效引擎 0.5 秒的暖機時間，避免吃掉開頭的判定導致第一節被算作失敗
+        engineRef.current.nextNoteTime = audioCtxRef.current.currentTime + 0.5; 
       }
       
       setStats(s => ({ ...s, streak: 0 }));
@@ -349,7 +353,6 @@ export default function App() {
     if (cycle.perfects === cycle.total) {
       cycle.awarded = true;
       const patternId = RHYTHM_PATTERNS[cycle.patternIndex].id;
-      // 結合 patternId 與 當下的 bpm，讓每種速度的皇冠獨立計算
       const currentBpm = stateRef.current.bpm;
       const key = `${patternId}_${currentBpm}`;
       
@@ -359,12 +362,10 @@ export default function App() {
       const cw = canvas ? canvas.width : 800;
       const ch = canvas ? canvas.height : 300;
       
-      // 播放皇冠專屬音效
       if (audioCtxRef.current) {
         playClick(audioCtxRef.current.currentTime, 'crown');
       }
 
-      // 觸發「巨大搖晃皇冠」動畫
       visualEffectsRef.current.push({ time: Date.now(), type: 'crown', x: cw / 2, y: ch / 2 });
     }
   };
@@ -439,6 +440,11 @@ export default function App() {
   const handlePointerDown = (e) => {
     if (e.target.closest('button') || e.target.closest('input')) return;
     
+    // 【極速防護罩】50 毫秒內拒絕第二下點擊，完美封殺手機「Touch 與 Pointer」雙重觸發導致的幽靈判定
+    const now = Date.now();
+    if (now - lastHitTimeRef.current < 50) return;
+    lastHitTimeRef.current = now;
+
     if (hitAreaRef.current) {
       hitAreaRef.current.style.backgroundColor = '#e2e8f0'; 
     }
@@ -556,25 +562,23 @@ export default function App() {
         const progress = age / maxAge;
         const yOffset = progress * 80; 
         const currentY = effect.y - yOffset;
-        const scale = 1 + Math.sin(progress * Math.PI) * 0.3; // 彈性放大縮小
-        const angle = Math.sin(age * 0.03) * 0.25; // 左右搖晃
+        const scale = 1 + Math.sin(progress * Math.PI) * 0.3; 
+        const angle = Math.sin(age * 0.03) * 0.25; 
 
         ctx.save();
         ctx.globalAlpha = 1 - Math.pow(progress, 3); 
         
-        // 繪製搖晃與巨大化的皇冠
         ctx.save();
         ctx.translate(effect.x, currentY);
         ctx.rotate(angle);
         ctx.scale(scale, scale);
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "140px sans-serif"; // 更大！
+        ctx.font = "140px sans-serif"; 
         ctx.fillText("👑", 0, 0);
         ctx.restore();
 
-        // 繪製 +1
-        ctx.font = "bold 40px sans-serif"; // 數字也跟著變大
+        ctx.font = "bold 40px sans-serif"; 
         ctx.fillStyle = "#F59E0B";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -672,7 +676,6 @@ export default function App() {
           <p className="text-[10px] sm:text-xs text-slate-400 font-bold mb-2 sm:mb-3 uppercase tracking-widest">選擇譜例 (共32條經典訓練)</p>
           <div className="grid grid-rows-2 grid-flow-col gap-2 sm:gap-3 pb-1 sm:pb-2 w-max">
             {RHYTHM_PATTERNS.map((pattern, index) => {
-              // 取得「當前這首譜例」在「當前速度」的成就次數
               const currentKey = `${pattern.id}_${bpm}`;
               const crownCount = crowns[currentKey];
 
@@ -693,14 +696,14 @@ export default function App() {
                     {CIRCLE_NUMBERS[index]}
                   </span>
                   
-                  {/* 動態顯示該速度底下的皇冠成就 */}
                   {crownCount > 0 && (
                     <span className="absolute top-1 right-1.5 flex items-center gap-0.5 text-[9px] sm:text-[10px] font-bold text-amber-500 bg-amber-50 px-1 rounded-full border border-amber-200 shadow-sm">
                       👑 <span className="translate-y-[0.5px]">{crownCount}</span>
                     </span>
                   )}
 
-                  <span className={`text-lg sm:text-xl mt-1.5 sm:mt-2 ${currentPatternIndex === index ? 'text-red-500' : 'text-slate-700'}`}>
+                  {/* 加上 font-music 強制套用 Google 專業音樂字體 */}
+                  <span className={`text-lg sm:text-xl mt-1.5 sm:mt-2 font-music ${currentPatternIndex === index ? 'text-red-500' : 'text-slate-700'}`}>
                     {pattern.symbol}
                   </span>
                 </button>
@@ -824,6 +827,9 @@ export default function App() {
       </footer>
       
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Music&display=swap');
+        .font-music { font-family: 'Noto Music', system-ui, sans-serif; }
+        
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
