@@ -256,17 +256,13 @@ export default function App() {
       engineRef.current.cycleCounter++;
       const currentCycleId = engineRef.current.cycleCounter;
 
-      const pattern = RHYTHM_PATTERNS[stateRef.current.currentPatternIndex];
-      const totalExpectedNotes = pattern.beats[0].length + pattern.beats[1].length + pattern.beats[2].length + pattern.beats[3].length;
-
       engineRef.current.activeCycles[currentCycleId] = {
-        total: totalExpectedNotes, 
-        perfects: 0,
-        mistakes: 0,
         patternIndex: stateRef.current.currentPatternIndex,
         awarded: false,
-        // 紀錄小節結束時間，用來在 scheduler 結算
-        endTime: time + (4 * secondsPerBeat) 
+        // 紀錄小節結束時間
+        endTime: time + (4 * secondsPerBeat),
+        // 全新邏輯：只要該小節發生早打、晚打、漏打、多打，就會變成 true
+        hasError: false
       };
 
       Object.keys(engineRef.current.activeCycles).forEach(key => {
@@ -327,10 +323,12 @@ export default function App() {
     
     engineRef.current.actualHits = engineRef.current.actualHits.filter(h => h.time > now - 2);
 
-    // 【結算機制】檢查小節是否已結束（解決休止符等時間到了才能結算的狀況）
+    // 【全新結算機制】檢查小節是否已完全結束
     Object.values(engineRef.current.activeCycles).forEach(cycle => {
-      if (!cycle.awarded && cycle.endTime && now >= cycle.endTime) {
-        if (cycle.mistakes === 0 && cycle.perfects === cycle.total) {
+      // 加上 0.15 秒的緩衝，確保這個小節最後一個音符的打擊容錯判定已經徹底結束
+      if (!cycle.awarded && cycle.endTime && now >= cycle.endTime + 0.15) {
+        // 只要這小節沒有任何失誤 (代表所有的圓點都變綠色，或者安全度過休止符)
+        if (!cycle.hasError) {
           cycle.awarded = true;
           awardCrown(cycle.patternIndex);
         }
@@ -373,18 +371,6 @@ export default function App() {
     }
   };
 
-  const checkCycleCompletion = (cycleId) => {
-    const cycle = engineRef.current.activeCycles[cycleId];
-    // 全休止符的 total 為 0，不提早發放，交由 scheduler 結束時判定
-    if (!cycle || cycle.awarded || cycle.total === 0) return;
-    if (cycle.mistakes > 0) return; 
-    
-    if (cycle.perfects === cycle.total) {
-      cycle.awarded = true;
-      awardCrown(cycle.patternIndex);
-    }
-  };
-
   const processHit = (hitTime) => {
     if (!stateRef.current.isRecording) return; 
 
@@ -417,7 +403,6 @@ export default function App() {
         expected.status = 'perfect';
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'perfect' });
         playClick(audioCtxRef.current.currentTime, 'success');
-        if (cycle) { cycle.perfects++; checkCycleCompletion(expected.cycleId); }
         
         setStats(s => {
           const newStreak = s.streak + 1;
@@ -427,14 +412,14 @@ export default function App() {
 
       } else if (diff < 0) {
         expected.status = 'early';
-        if (cycle) cycle.mistakes++;
+        if (cycle) cycle.hasError = true;
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'early' });
         playClick(audioCtxRef.current.currentTime, 'fail');
         setStats(s => ({ ...s, streak: 0 }));
         visualEffectsRef.current.push({ time: Date.now(), type: 'early', x: 200 }); 
       } else {
         expected.status = 'late';
-        if (cycle) cycle.mistakes++;
+        if (cycle) cycle.hasError = true;
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'late' });
         playClick(audioCtxRef.current.currentTime, 'fail');
         setStats(s => ({ ...s, streak: 0 }));
@@ -443,7 +428,7 @@ export default function App() {
     } else {
       const currentCycleId = engineRef.current.cycleCounter;
       const currentCycle = engineRef.current.activeCycles[currentCycleId];
-      if (currentCycle) currentCycle.mistakes++;
+      if (currentCycle) currentCycle.hasError = true;
 
       engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'noise' });
       playClick(audioCtxRef.current.currentTime, 'fail');
@@ -522,7 +507,7 @@ export default function App() {
          expected.expired = true;
          setStats(s => ({ ...s, streak: 0 })); 
          const cycle = engineRef.current.activeCycles[expected.cycleId];
-         if (cycle) cycle.mistakes++;
+         if (cycle) cycle.hasError = true;
       }
 
       if (x > -50 && x < width + 50) {
