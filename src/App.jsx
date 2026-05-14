@@ -53,7 +53,6 @@ export default function App() {
   const [currentPatternIndex, setCurrentPatternIndex] = useState(0);
   const [guideTrackEnabled, setGuideTrackEnabled] = useState(true);
   const [subdivisionEnabled, setSubdivisionEnabled] = useState(true);
-  const [latencyOffset, setLatencyOffset] = useState(0); 
   const [stats, setStats] = useState({ hits: 0, streak: 0, maxStreak: 0 });
   const [showInitOverlay, setShowInitOverlay] = useState(true);
 
@@ -81,11 +80,11 @@ export default function App() {
   const canvasRef = useRef(null);
   const timerWorkerRef = useRef(null); 
   
-  const stateRef = useRef({ bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled, latencyOffset });
+  const stateRef = useRef({ bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled });
   
   useEffect(() => {
-    stateRef.current = { bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled, latencyOffset };
-  }, [bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled, latencyOffset]);
+    stateRef.current = { bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled };
+  }, [bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled]);
 
   const engineRef = useRef({
     nextNoteTime: 0,
@@ -256,7 +255,6 @@ export default function App() {
       const currentCycleId = engineRef.current.cycleCounter;
       const pattern = RHYTHM_PATTERNS[stateRef.current.currentPatternIndex];
       
-      // 計算該小節總共有幾個音符點點
       const totalNotes = pattern.beats[0].length + pattern.beats[1].length + pattern.beats[2].length + pattern.beats[3].length;
 
       engineRef.current.activeCycles[currentCycleId] = {
@@ -264,7 +262,7 @@ export default function App() {
         awarded: false,
         endTime: time + (4 * secondsPerBeat),
         totalNotes: totalNotes,
-        perfectCount: 0 // 記錄該小節打到 Perfect 的數量
+        perfectCount: 0 
       };
 
       Object.keys(engineRef.current.activeCycles).forEach(key => {
@@ -325,11 +323,8 @@ export default function App() {
     
     engineRef.current.actualHits = engineRef.current.actualHits.filter(h => h.time > now - 2);
 
-    // 【重寫後的皇冠結算】
     Object.values(engineRef.current.activeCycles).forEach(cycle => {
       if (!cycle.awarded && cycle.endTime && now >= cycle.endTime + 0.15) {
-        // 判定標準：只要 Perfect 數量等於總音符數 (代表所有圓點都變綠色)
-        // 不管有沒有 Noise, Early, Late 點擊
         if (cycle.perfectCount === cycle.totalNotes) {
           cycle.awarded = true;
           awardCrown(cycle.patternIndex);
@@ -375,7 +370,7 @@ export default function App() {
   const processHit = (hitTime) => {
     if (!stateRef.current.isRecording) return; 
 
-    const adjustedHitTime = hitTime - (stateRef.current.latencyOffset / 1000);
+    const adjustedHitTime = hitTime; 
     const tolerance = stateRef.current.mode === 'pro' ? 0.015 : 0.030;
     const hitWindow = 0.15;
     
@@ -405,7 +400,6 @@ export default function App() {
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'perfect' });
         playClick(audioCtxRef.current.currentTime, 'success');
         
-        // 增加該小節的 Perfect 計數
         if (cycle) cycle.perfectCount++;
         
         setStats(s => {
@@ -496,6 +490,7 @@ export default function App() {
     ctx.lineWidth = 3;
     ctx.stroke();
 
+    // 加大 1.5 倍的圓點 (預期點)
     engineRef.current.expectedHits.forEach(expected => {
       const x = hitLineX + (expected.time - now) * pixelsPerSecond;
       
@@ -506,7 +501,7 @@ export default function App() {
 
       if (x > -50 && x < width + 50) {
         ctx.beginPath();
-        ctx.arc(x, height / 2, 14, 0, 2 * Math.PI); 
+        ctx.arc(x, height / 2, 21, 0, 2 * Math.PI); 
         
         if (expected.expired && !expected.status) {
           ctx.strokeStyle = '#EF4444';
@@ -516,17 +511,18 @@ export default function App() {
           ctx.fillStyle = 'transparent';
         }
         
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3; 
         ctx.fill();
         ctx.stroke();
       }
     });
 
+    // 加大 1.5 倍的打擊點 (落點)
     engineRef.current.actualHits.forEach(hit => {
       const x = hitLineX + (hit.time - now) * pixelsPerSecond;
       if (x > -50 && x < width + 50) {
          ctx.beginPath();
-         ctx.arc(x, height / 2, 10, 0, 2 * Math.PI); 
+         ctx.arc(x, height / 2, 15, 0, 2 * Math.PI); 
          
          if (hit.status === 'perfect') {
             ctx.fillStyle = '#4ADE80'; 
@@ -582,7 +578,7 @@ export default function App() {
         continue;
       }
 
-      const radius = 15 + (age / 300) * 30;
+      const radius = 22.5 + (age / 300) * 45;
       const opacity = 1 - (age / 300);
       
       ctx.beginPath();
@@ -610,15 +606,21 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 overflow-hidden">
       
       {showInitOverlay && (
-        <div className="fixed inset-0 bg-white/90 z-50 flex flex-col items-center justify-center">
-          <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl text-center max-w-sm w-11/12 border border-slate-100">
-            <Music className="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-4" />
-            <h1 className="text-xl sm:text-2xl font-bold mb-2">節奏大師</h1>
+        <div className="fixed inset-0 bg-white/95 z-50 flex flex-col items-center justify-center">
+          <div className="bg-white p-6 sm:p-10 rounded-3xl shadow-2xl text-center max-w-sm w-11/12 border border-slate-100">
+            <Music className="w-16 h-16 text-red-500 mx-auto mb-6" />
+            <h1 className="text-2xl sm:text-3xl font-bold mb-3">節奏大師</h1>
+            <div className="space-y-2 mb-8">
+               <p className="text-slate-500 text-sm">歡迎來到節奏感挑戰！</p>
+               <p className="text-red-500 text-sm">
+                  因有延遲，請勿使用藍牙耳機
+               </p>
+            </div>
             <button 
               onClick={initAudio}
-              className="w-full py-3 sm:py-4 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-base sm:text-lg transition-colors mt-4"
+              className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-lg transition-all shadow-lg shadow-red-100 active:scale-95"
             >
-              進入 App
+              進入訓練
             </button>
           </div>
         </div>
@@ -647,19 +649,6 @@ export default function App() {
               <span>{stats.streak} 連擊</span>
             </div>
           )}
-        </div>
-        
-        <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto hide-scrollbar pb-1 sm:pb-0 w-full sm:w-auto">
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] sm:text-xs font-bold text-slate-500">
-              設備延遲補償: <span className={latencyOffset > 0 ? 'text-blue-500' : ''}>{latencyOffset > 0 ? `+${latencyOffset}` : latencyOffset}ms</span>
-            </span>
-            <input 
-              type="range" min="-150" max="150" step="5" value={latencyOffset}
-              onChange={(e) => setLatencyOffset(parseInt(e.target.value))}
-              className="w-20 sm:w-28 accent-blue-400"
-            />
-          </div>
         </div>
       </div>
 
@@ -715,7 +704,7 @@ export default function App() {
           <div className="flex justify-between items-end mb-3 relative z-20" onPointerDown={(e) => e.stopPropagation()}>
             <div className="flex items-center bg-white p-1 rounded-full border border-slate-200 shadow-sm shrink-0">
                 
-               {[68, 128, 142].map(speed => (
+               {[68, 128, 135, 142].map(speed => (
                  <button
                    key={speed}
                    onClick={() => setBpm(speed)}
