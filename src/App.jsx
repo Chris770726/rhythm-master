@@ -48,7 +48,7 @@ const RHYTHM_PATTERNS = PATTERNS_DATA.map(p => ({
 
 export default function App() {
   const [isRecording, setIsRecording] = useState(false);
-  const [bpm, setBpm] = useState(68); // 預設為第一種速度 68
+  const [bpm, setBpm] = useState(68);
   const [mode, setMode] = useState('normal'); 
   const [currentPatternIndex, setCurrentPatternIndex] = useState(0);
   const [guideTrackEnabled, setGuideTrackEnabled] = useState(true);
@@ -58,10 +58,9 @@ export default function App() {
   const [showInitOverlay, setShowInitOverlay] = useState(true);
 
   const hitAreaRef = useRef(null);
-  // 【關鍵修正 1】用來記錄最後一次敲擊的時間，防止手機雙重觸發 (Double-trigger)
   const lastHitTimeRef = useRef(0);
 
-  // --- 皇冠系統 (依據 patternId + bpm 獨立儲存) ---
+  // --- 皇冠系統 ---
   const [crowns, setCrowns] = useState(() => {
     try {
       const saved = window.localStorage.getItem('rhythm_master_crowns_v3');
@@ -194,19 +193,19 @@ export default function App() {
         osc.type = 'square';
         osc.frequency.setValueAtTime(880, safeTime);
         osc.frequency.exponentialRampToValueAtTime(220, safeTime + 0.05);
-        gainNode.gain.setValueAtTime(1.2, safeTime); // 將示範音量從 0.4 調大至 1.2
+        gainNode.gain.setValueAtTime(0.4, safeTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + 0.05);
       } else if (type === 'success') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(1200, safeTime);
         osc.frequency.setValueAtTime(1600, safeTime + 0.05);
-        gainNode.gain.setValueAtTime(1.2, safeTime); // 將完美打擊音量從 0.4 調大至 1.2
+        gainNode.gain.setValueAtTime(0.4, safeTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + duration);
       } else if (type === 'fail') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(200, safeTime);
         osc.frequency.exponentialRampToValueAtTime(100, safeTime + duration);
-        gainNode.gain.setValueAtTime(0.8, safeTime); // 將失誤打擊音量從 0.2 調大至 0.8
+        gainNode.gain.setValueAtTime(0.2, safeTime);
         gainNode.gain.exponentialRampToValueAtTime(0.001, safeTime + duration);
       } else if (type === 'crown') {
         duration = 0.8;
@@ -231,13 +230,32 @@ export default function App() {
     engineRef.current.currentBeat = (engineRef.current.currentBeat + 1) % 8; 
   };
 
+  // --- 發放皇冠邏輯獨立出來 ---
+  const awardCrown = (patternIndex) => {
+    const patternId = RHYTHM_PATTERNS[patternIndex].id;
+    const currentBpm = stateRef.current.bpm;
+    const key = `${patternId}_${currentBpm}`;
+    
+    setCrowns(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+    
+    const canvas = canvasRef.current;
+    const cw = canvas ? canvas.width : 800;
+    const ch = canvas ? canvas.height : 300;
+    
+    if (audioCtxRef.current) {
+      playClick(audioCtxRef.current.currentTime, 'crown');
+    }
+
+    visualEffectsRef.current.push({ time: Date.now(), type: 'crown', x: cw / 2, y: ch / 2 });
+  };
+
   const scheduleNote = (beatNumber, time) => {
+    const secondsPerBeat = 60.0 / stateRef.current.bpm;
+
     if (beatNumber === 0) {
       engineRef.current.cycleCounter++;
       const currentCycleId = engineRef.current.cycleCounter;
 
-      // 【關鍵修正 2】在第一拍的時候，直接計算出「這四拍總共有幾個音符」並寫死
-      // 避免手機運算延遲導致判斷提早觸發或條件不一致
       const pattern = RHYTHM_PATTERNS[stateRef.current.currentPatternIndex];
       const totalExpectedNotes = pattern.beats[0].length + pattern.beats[1].length + pattern.beats[2].length + pattern.beats[3].length;
 
@@ -246,7 +264,9 @@ export default function App() {
         perfects: 0,
         mistakes: 0,
         patternIndex: stateRef.current.currentPatternIndex,
-        awarded: false
+        awarded: false,
+        // 紀錄小節結束時間，用來在 scheduler 結算
+        endTime: time + (4 * secondsPerBeat) 
       };
 
       Object.keys(engineRef.current.activeCycles).forEach(key => {
@@ -259,8 +279,6 @@ export default function App() {
     const currentCycleId = engineRef.current.cycleCounter;
     engineRef.current.expectedBeats.push({ time, isFirstBeat: beatNumber % 4 === 0, isSubdivision: false, audioScheduled: false });
     
-    const secondsPerBeat = 60.0 / stateRef.current.bpm;
-
     if (stateRef.current.subdivisionEnabled) {
       engineRef.current.expectedBeats.push({ time: time + secondsPerBeat / 2, isFirstBeat: false, isSubdivision: true, audioScheduled: false });
     }
@@ -308,6 +326,16 @@ export default function App() {
     });
     
     engineRef.current.actualHits = engineRef.current.actualHits.filter(h => h.time > now - 2);
+
+    // 【結算機制】檢查小節是否已結束（解決休止符等時間到了才能結算的狀況）
+    Object.values(engineRef.current.activeCycles).forEach(cycle => {
+      if (!cycle.awarded && cycle.endTime && now >= cycle.endTime) {
+        if (cycle.mistakes === 0 && cycle.perfects === cycle.total) {
+          cycle.awarded = true;
+          awardCrown(cycle.patternIndex);
+        }
+      }
+    });
   }, []);
 
   const startTraining = () => {
@@ -323,7 +351,7 @@ export default function App() {
       engineRef.current.activeCycles = {};
       
       if(audioCtxRef.current) {
-        // 【關鍵修正 3】給予手機音效引擎 0.5 秒的暖機時間，避免吃掉開頭的判定導致第一節被算作失敗
+        // 給予 0.5 秒的暖機時間，讓第一拍有足夠的反應與視覺進場時間
         engineRef.current.nextNoteTime = audioCtxRef.current.currentTime + 0.5; 
       }
       
@@ -347,26 +375,13 @@ export default function App() {
 
   const checkCycleCompletion = (cycleId) => {
     const cycle = engineRef.current.activeCycles[cycleId];
+    // 全休止符的 total 為 0，不提早發放，交由 scheduler 結束時判定
     if (!cycle || cycle.awarded || cycle.total === 0) return;
     if (cycle.mistakes > 0) return; 
     
     if (cycle.perfects === cycle.total) {
       cycle.awarded = true;
-      const patternId = RHYTHM_PATTERNS[cycle.patternIndex].id;
-      const currentBpm = stateRef.current.bpm;
-      const key = `${patternId}_${currentBpm}`;
-      
-      setCrowns(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
-      
-      const canvas = canvasRef.current;
-      const cw = canvas ? canvas.width : 800;
-      const ch = canvas ? canvas.height : 300;
-      
-      if (audioCtxRef.current) {
-        playClick(audioCtxRef.current.currentTime, 'crown');
-      }
-
-      visualEffectsRef.current.push({ time: Date.now(), type: 'crown', x: cw / 2, y: ch / 2 });
+      awardCrown(cycle.patternIndex);
     }
   };
 
@@ -440,7 +455,7 @@ export default function App() {
   const handlePointerDown = (e) => {
     if (e.target.closest('button') || e.target.closest('input')) return;
     
-    // 【極速防護罩】50 毫秒內拒絕第二下點擊，完美封殺手機「Touch 與 Pointer」雙重觸發導致的幽靈判定
+    // 防雙重觸發
     const now = Date.now();
     if (now - lastHitTimeRef.current < 50) return;
     lastHitTimeRef.current = now;
@@ -683,8 +698,8 @@ export default function App() {
                 <button
                   key={pattern.id}
                   onClick={() => {
-                     setCurrentPatternIndex(index);
-                     if (!stateRef.current.isRecording) startTraining();
+                      setCurrentPatternIndex(index);
+                      if (!stateRef.current.isRecording) startTraining();
                   }}
                   className={`relative flex flex-col items-center justify-center w-20 h-14 sm:w-24 sm:h-16 rounded-xl border-2 transition-all shrink-0 ${
                     currentPatternIndex === index 
@@ -724,7 +739,7 @@ export default function App() {
           {/* BPM 三段變速按鈕區塊 */}
           <div className="flex justify-between items-end mb-3 relative z-20" onPointerDown={(e) => e.stopPropagation()}>
             <div className="flex items-center bg-white p-1 rounded-full border border-slate-200 shadow-sm shrink-0">
-               
+                
                {[68, 128, 142].map(speed => (
                  <button
                    key={speed}
@@ -738,7 +753,7 @@ export default function App() {
                    BPM {speed}
                  </button>
                ))}
-                
+               
                 <div className="w-px h-6 bg-slate-200 mx-1 sm:mx-2"></div>
                 <button 
                   onClick={() => setSubdivisionEnabled(!subdivisionEnabled)}
