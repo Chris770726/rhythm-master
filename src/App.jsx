@@ -59,6 +59,7 @@ export default function App() {
   const hitAreaRef = useRef(null);
   const lastHitTimeRef = useRef(0);
 
+  // --- 皇冠系統 ---
   const [crowns, setCrowns] = useState(() => {
     try {
       const saved = window.localStorage.getItem('rhythm_master_crowns_v3');
@@ -98,43 +99,6 @@ export default function App() {
   }); 
 
   const visualEffectsRef = useRef([]);
-
-  // --- 自動調整畫布大小 (優化版，解決 ResizeObserver loop 錯誤) ---
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    let resizeFrameId = null;
-    
-    const resizeCanvas = () => {
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const newWidth = Math.floor(rect.width * dpr);
-      const newHeight = Math.floor(rect.height * dpr);
-      
-      // 只有當實際像素大小改變時才更新，避免過度觸發
-      if (canvas.width !== newWidth || canvas.height !== newHeight) {
-        canvas.width = newWidth;
-        canvas.height = newHeight;
-      }
-    };
-
-    const observer = new ResizeObserver(() => {
-      // 使用 requestAnimationFrame 包裹，防止在同一個佈局循環內同步執行
-      cancelAnimationFrame(resizeFrameId);
-      resizeFrameId = requestAnimationFrame(resizeCanvas);
-    });
-
-    if (canvas.parentElement) {
-      observer.observe(canvas.parentElement);
-    }
-    
-    resizeCanvas();
-    
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(resizeFrameId);
-    };
-  }, []);
 
   const initAudio = () => {
     if (!audioCtxRef.current) {
@@ -273,9 +237,8 @@ export default function App() {
     setCrowns(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
     
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const cw = canvas.width;
-    const ch = canvas.height;
+    const cw = canvas ? canvas.width : 800;
+    const ch = canvas ? canvas.height : 300;
     
     if (audioCtxRef.current) {
       playClick(audioCtxRef.current.currentTime, 'crown');
@@ -502,31 +465,29 @@ export default function App() {
     const height = canvas.height;
     const now = audioCtxRef.current.currentTime;
 
-    const pixelsPerSecond = (width / 2.6); 
-    const hitLineX = width * 0.25;
-
     ctx.clearRect(0, 0, width, height);
 
-    // 繪製拍點背景線 (確保畫到底)
+    const hitLineX = 200; 
+    const pixelsPerSecond = 300; 
+
     ctx.beginPath();
     engineRef.current.expectedBeats.forEach(beat => {
       if (beat.isSubdivision) return; 
       const x = hitLineX + (beat.time - now) * pixelsPerSecond;
       if (x > 0 && x < width) {
         ctx.moveTo(x, 0);
-        ctx.lineTo(x, height); 
+        ctx.lineTo(x, height);
       }
     });
     ctx.strokeStyle = '#E2E8F0'; 
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // 繪製主要判定線
     ctx.beginPath();
     ctx.moveTo(hitLineX, 0);
     ctx.lineTo(hitLineX, height);
     ctx.strokeStyle = '#CBD5E1'; 
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.stroke();
 
     // 加大 1.5 倍的圓點 (預期點)
@@ -540,7 +501,7 @@ export default function App() {
 
       if (x > -50 && x < width + 50) {
         ctx.beginPath();
-        ctx.arc(x, height / 2, 24, 0, 2 * Math.PI); 
+        ctx.arc(x, height / 2, 21, 0, 2 * Math.PI); 
         
         if (expected.expired && !expected.status) {
           ctx.strokeStyle = '#EF4444';
@@ -550,7 +511,7 @@ export default function App() {
           ctx.fillStyle = 'transparent';
         }
         
-        ctx.lineWidth = 4; 
+        ctx.lineWidth = 3; 
         ctx.fill();
         ctx.stroke();
       }
@@ -561,7 +522,7 @@ export default function App() {
       const x = hitLineX + (hit.time - now) * pixelsPerSecond;
       if (x > -50 && x < width + 50) {
          ctx.beginPath();
-         ctx.arc(x, height / 2, 18, 0, 2 * Math.PI); 
+         ctx.arc(x, height / 2, 15, 0, 2 * Math.PI); 
          
          if (hit.status === 'perfect') {
             ctx.fillStyle = '#4ADE80'; 
@@ -617,7 +578,7 @@ export default function App() {
         continue;
       }
 
-      const radius = 25 + (age / 300) * 50;
+      const radius = 22.5 + (age / 300) * 45;
       const opacity = 1 - (age / 300);
       
       ctx.beginPath();
@@ -780,8 +741,19 @@ export default function App() {
               </div>
             )}
             
+            <div className="absolute bottom-2 right-3 sm:bottom-4 sm:right-4 flex flex-col items-end text-[10px] sm:text-xs text-slate-400 z-10 bg-white/80 p-1.5 rounded-lg shadow-sm">
+              <div className="flex gap-1.5 sm:gap-2 mb-1">
+                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-400"></span>完美</span>
+                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-orange-400"></span>早打</span>
+                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-400"></span>晚打</span>
+              </div>
+              容錯率: {mode === 'pro' ? '±15ms' : '±30ms'}
+            </div>
+
             <canvas 
               ref={canvasRef}
+              width={800} 
+              height={300}
               className="w-full h-full object-cover pointer-events-none"
             />
           </div>
