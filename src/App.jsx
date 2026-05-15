@@ -103,6 +103,41 @@ export default function App() {
 
   const visualEffectsRef = useRef([]);
 
+  // --- 自動調整畫布大小 ---
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    let resizeFrameId = null;
+    
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const newWidth = Math.floor(rect.width * dpr);
+      const newHeight = Math.floor(rect.height * dpr);
+      
+      if (canvas.width !== newWidth || canvas.height !== newHeight) {
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+      }
+    };
+
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(resizeFrameId);
+      resizeFrameId = requestAnimationFrame(resizeCanvas);
+    });
+
+    if (canvas.parentElement) {
+      observer.observe(canvas.parentElement);
+    }
+    
+    resizeCanvas();
+    
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(resizeFrameId);
+    };
+  }, []);
+
   const initAudio = () => {
     if (!audioCtxRef.current) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -240,8 +275,9 @@ export default function App() {
     setCrowns(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
     
     const canvas = canvasRef.current;
-    const cw = canvas ? canvas.width : 800;
-    const ch = canvas ? canvas.height : 300;
+    if (!canvas) return;
+    const cw = canvas.width;
+    const ch = canvas.height;
     
     if (audioCtxRef.current) {
       playClick(audioCtxRef.current.currentTime, 'crown');
@@ -473,26 +509,29 @@ export default function App() {
 
     ctx.clearRect(0, 0, width, height);
 
+    // 繪製背景輔助線 (強迫畫到遠超過底部，絕對不會斷)
     ctx.beginPath();
     engineRef.current.expectedBeats.forEach(beat => {
       if (beat.isSubdivision) return; 
       const x = hitLineX + (beat.time - now) * pixelsPerSecond;
-      if (x > 0 && x < width) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+      if (x > -50 && x < width + 50) {
+        ctx.moveTo(x, -100);
+        ctx.lineTo(x, height + 500); 
       }
     });
     ctx.strokeStyle = '#E2E8F0'; 
     ctx.lineWidth = 1;
     ctx.stroke();
 
+    // 繪製主要打擊線 (強迫畫到遠超過底部)
     ctx.beginPath();
-    ctx.moveTo(hitLineX, 0);
-    ctx.lineTo(hitLineX, height);
+    ctx.moveTo(hitLineX, -100);
+    ctx.lineTo(hitLineX, height + 500);
     ctx.strokeStyle = '#CBD5E1'; 
     ctx.lineWidth = 3;
     ctx.stroke();
 
+    // 再縮小 0.85 倍的圓點
     engineRef.current.expectedHits.forEach(expected => {
       const x = hitLineX + (expected.time - now) * pixelsPerSecond;
       
@@ -619,7 +658,8 @@ export default function App() {
             <div className="space-y-2 mb-8">
                <p className="text-slate-500 text-sm">歡迎來到節奏感挑戰！</p>
                <p className="text-red-500 text-sm">
-                  因有延遲，請勿使用藍牙耳機
+                  因有延遲，請勿使用藍牙耳機<br />
+                  <span className="font-bold">請關閉手機靜音模式</span>
                </p>
             </div>
             <button 
@@ -632,15 +672,25 @@ export default function App() {
         </div>
       )}
 
-      <header className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between bg-white border-b border-slate-100 shadow-sm shrink-0">
+      <header className="relative px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-center bg-white border-b border-slate-100 shadow-sm shrink-0">
         <div className="flex items-center gap-2">
           <h1 className="text-lg sm:text-xl font-bold tracking-wider">天下第一準之節奏大師</h1>
-          <div className="w-2 h-2 rounded-full bg-green-400"></div>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-slate-700">
+            <g transform="rotate(-40 12 12)">
+              <ellipse cx="12" cy="4.5" rx="1.8" ry="2.8" fill="currentColor" />
+              <line x1="12" y1="7.5" x2="12" y2="21.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </g>
+            <g transform="rotate(40 12 12)">
+              <line x1="12" y1="7.5" x2="12" y2="21.5" stroke="white" strokeWidth="4.5" strokeLinecap="round" />
+              <ellipse cx="12" cy="4.5" rx="1.8" ry="2.8" fill="currentColor" />
+              <line x1="12" y1="7.5" x2="12" y2="21.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </g>
+          </svg>
         </div>
         
         {/* 連擊顯示移到右上角 */}
         {stats.streak >= 3 && (
-          <div className="flex items-center gap-1 text-xs sm:text-sm font-bold text-amber-500 bg-amber-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full animate-bounce shrink-0 border border-amber-100">
+          <div className="absolute right-4 sm:right-6 flex items-center gap-1 text-xs sm:text-sm font-bold text-amber-500 bg-amber-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full animate-bounce shrink-0 border border-amber-100">
             <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
             <span>{stats.streak} 連擊</span>
           </div>
@@ -744,9 +794,7 @@ export default function App() {
             
             <canvas 
               ref={canvasRef}
-              width={800} 
-              height={300}
-              className="w-full h-full object-cover pointer-events-none"
+              className="absolute inset-0 w-full h-full pointer-events-none block"
             />
           </div>
         </div>
