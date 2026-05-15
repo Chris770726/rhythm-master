@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, Trophy, Music, Headphones, Pointer } from 'lucide-react';
+import { Play, Square, Trophy, Music } from 'lucide-react';
 
 // --- 32條經典節奏譜例資料庫 ---
 const CIRCLE_NUMBERS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','㉑','㉒','㉓','㉔','㉕','㉖','㉗','㉘','㉙','㉚','㉛','㉜'];
@@ -49,12 +49,15 @@ const RHYTHM_PATTERNS = PATTERNS_DATA.map(p => ({
 export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [bpm, setBpm] = useState(68);
-  const [mode, setMode] = useState('normal'); 
+  const [activeTab, setActiveTab] = useState('basic'); 
   const [currentPatternIndex, setCurrentPatternIndex] = useState(0);
-  const [guideTrackEnabled, setGuideTrackEnabled] = useState(true);
-  const [subdivisionEnabled, setSubdivisionEnabled] = useState(true);
   const [stats, setStats] = useState({ hits: 0, streak: 0, maxStreak: 0 });
   const [showInitOverlay, setShowInitOverlay] = useState(true);
+
+  // 永久預設開啟設定
+  const guideTrackEnabled = true;
+  const subdivisionEnabled = true;
+  const mode = 'normal';
 
   const hitAreaRef = useRef(null);
   const lastHitTimeRef = useRef(0);
@@ -80,11 +83,11 @@ export default function App() {
   const canvasRef = useRef(null);
   const timerWorkerRef = useRef(null); 
   
-  const stateRef = useRef({ bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled });
+  const stateRef = useRef({ bpm, currentPatternIndex, isRecording, guideTrackEnabled, subdivisionEnabled });
   
   useEffect(() => {
-    stateRef.current = { bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled };
-  }, [bpm, currentPatternIndex, isRecording, mode, guideTrackEnabled, subdivisionEnabled]);
+    stateRef.current = { bpm, currentPatternIndex, isRecording, guideTrackEnabled, subdivisionEnabled };
+  }, [bpm, currentPatternIndex, isRecording]);
 
   const engineRef = useRef({
     nextNoteTime: 0,
@@ -371,7 +374,7 @@ export default function App() {
     if (!stateRef.current.isRecording) return; 
 
     const adjustedHitTime = hitTime; 
-    const tolerance = stateRef.current.mode === 'pro' ? 0.015 : 0.030;
+    const tolerance = 0.040; 
     const hitWindow = 0.15;
     
     let closestIndex = -1;
@@ -465,10 +468,10 @@ export default function App() {
     const height = canvas.height;
     const now = audioCtxRef.current.currentTime;
 
-    ctx.clearRect(0, 0, width, height);
+    const pixelsPerSecond = (width / 2.6); 
+    const hitLineX = width * 0.25;
 
-    const hitLineX = 200; 
-    const pixelsPerSecond = 300; 
+    ctx.clearRect(0, 0, width, height);
 
     ctx.beginPath();
     engineRef.current.expectedBeats.forEach(beat => {
@@ -490,7 +493,6 @@ export default function App() {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // 加大 1.5 倍的圓點 (預期點)
     engineRef.current.expectedHits.forEach(expected => {
       const x = hitLineX + (expected.time - now) * pixelsPerSecond;
       
@@ -501,7 +503,7 @@ export default function App() {
 
       if (x > -50 && x < width + 50) {
         ctx.beginPath();
-        ctx.arc(x, height / 2, 21, 0, 2 * Math.PI); 
+        ctx.arc(x, height / 2, 14.3, 0, 2 * Math.PI); 
         
         if (expected.expired && !expected.status) {
           ctx.strokeStyle = '#EF4444';
@@ -517,12 +519,11 @@ export default function App() {
       }
     });
 
-    // 加大 1.5 倍的打擊點 (落點)
     engineRef.current.actualHits.forEach(hit => {
       const x = hitLineX + (hit.time - now) * pixelsPerSecond;
       if (x > -50 && x < width + 50) {
          ctx.beginPath();
-         ctx.arc(x, height / 2, 15, 0, 2 * Math.PI); 
+         ctx.arc(x, height / 2, 10.2, 0, 2 * Math.PI); 
          
          if (hit.status === 'perfect') {
             ctx.fillStyle = '#4ADE80'; 
@@ -578,7 +579,7 @@ export default function App() {
         continue;
       }
 
-      const radius = 22.5 + (age / 300) * 45;
+      const radius = 15.3 + (age / 300) * 30.6;
       const opacity = 1 - (age / 300);
       
       ctx.beginPath();
@@ -601,6 +602,11 @@ export default function App() {
     requestAnimationFrameRef.current = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(requestAnimationFrameRef.current);
   }, [renderLoop]);
+
+  // 過濾當前分頁要顯示的譜例
+  const displayedPatterns = RHYTHM_PATTERNS.map((p, i) => ({ ...p, originalIndex: i })).filter((p) => {
+    return activeTab === 'basic' ? p.originalIndex < 7 : p.originalIndex >= 7;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 overflow-hidden">
@@ -631,33 +637,38 @@ export default function App() {
           <h1 className="text-lg sm:text-xl font-bold tracking-wider">天下第一準之節奏大師</h1>
           <div className="w-2 h-2 rounded-full bg-green-400"></div>
         </div>
-      </header>
-
-      <div className="px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border-b border-slate-100 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex bg-slate-100 rounded-full p-1 cursor-pointer shrink-0" onClick={() => setMode(mode === 'normal' ? 'pro' : 'normal')}>
-            <div className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-bold transition-colors ${mode === 'normal' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
-              普通
-            </div>
-            <div className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-bold transition-colors ${mode === 'pro' ? 'bg-white shadow text-red-500' : 'text-slate-500'}`}>
-              PRO 模式
-            </div>
+        
+        {/* 連擊顯示移到右上角 */}
+        {stats.streak >= 3 && (
+          <div className="flex items-center gap-1 text-xs sm:text-sm font-bold text-amber-500 bg-amber-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full animate-bounce shrink-0 border border-amber-100">
+            <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span>{stats.streak} 連擊</span>
           </div>
-          {stats.streak >= 3 && (
-            <div className="flex items-center gap-1 text-xs sm:text-sm font-bold text-amber-500 bg-amber-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full animate-bounce shrink-0">
-              <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span>{stats.streak} 連擊</span>
-            </div>
-          )}
-        </div>
-      </div>
+        )}
+      </header>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         
         <div className="bg-white py-3 sm:py-4 border-b border-slate-100 overflow-x-auto px-4 sm:px-6 hide-scrollbar shrink-0">
-          <p className="text-[10px] sm:text-xs text-slate-400 font-bold mb-2 sm:mb-3 uppercase tracking-widest">選擇譜例 (共32條經典訓練)</p>
-          <div className="grid grid-rows-2 grid-flow-col gap-2 sm:gap-3 pb-1 sm:pb-2 w-max">
-            {RHYTHM_PATTERNS.map((pattern, index) => {
+          
+          <div className="flex items-center justify-center gap-4 mb-4 border-b border-slate-100">
+             <button 
+                onClick={() => setActiveTab('basic')} 
+                className={`text-[11px] sm:text-xs font-bold uppercase tracking-widest pb-2 border-b-2 transition-colors ${activeTab === 'basic' ? 'text-red-500 border-red-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+             >
+                基礎挑戰 (1-7)
+             </button>
+             <button 
+                onClick={() => setActiveTab('advanced')} 
+                className={`text-[11px] sm:text-xs font-bold uppercase tracking-widest pb-2 border-b-2 transition-colors ${activeTab === 'advanced' ? 'text-red-500 border-red-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+             >
+                進階挑戰 (8-32)
+             </button>
+          </div>
+
+          <div className="grid grid-rows-2 grid-flow-col gap-2 sm:gap-3 pb-1 sm:pb-2 w-max mx-auto">
+            {displayedPatterns.map((pattern) => {
+              const actualIndex = pattern.originalIndex;
               const currentKey = `${pattern.id}_${bpm}`;
               const crownCount = crowns[currentKey];
 
@@ -665,17 +676,17 @@ export default function App() {
                 <button
                   key={pattern.id}
                   onClick={() => {
-                      setCurrentPatternIndex(index);
+                      setCurrentPatternIndex(actualIndex);
                       if (!stateRef.current.isRecording) startTraining();
                   }}
                   className={`relative flex flex-col items-center justify-center w-20 h-14 sm:w-24 sm:h-16 rounded-xl border-2 transition-all shrink-0 ${
-                    currentPatternIndex === index 
+                    currentPatternIndex === actualIndex 
                     ? 'border-red-400 bg-red-50' 
                     : 'border-slate-100 bg-white hover:border-slate-200'
                   }`}
                 >
                   <span className="absolute top-1 left-1.5 text-[10px] sm:text-xs text-slate-400 font-bold">
-                    {CIRCLE_NUMBERS[index]}
+                    {CIRCLE_NUMBERS[actualIndex]}
                   </span>
                   
                   {crownCount > 0 && (
@@ -684,7 +695,7 @@ export default function App() {
                     </span>
                   )}
 
-                  <span className={`text-lg sm:text-xl mt-1.5 sm:mt-2 font-music ${currentPatternIndex === index ? 'text-red-500' : 'text-slate-700'}`}>
+                  <span className={`text-lg sm:text-xl mt-1.5 sm:mt-2 font-music ${currentPatternIndex === actualIndex ? 'text-red-500' : 'text-slate-700'}`}>
                     {pattern.symbol}
                   </span>
                 </button>
@@ -701,9 +712,8 @@ export default function App() {
           onPointerCancel={handlePointerUp}
           onContextMenu={(e) => e.preventDefault()} 
         >
-          <div className="flex justify-between items-end mb-3 relative z-20" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="flex justify-center items-end mb-3 relative z-20 w-full" onPointerDown={(e) => e.stopPropagation()}>
             <div className="flex items-center bg-white p-1 rounded-full border border-slate-200 shadow-sm shrink-0">
-                
                {[68, 128, 135, 142].map(speed => (
                  <button
                    key={speed}
@@ -717,14 +727,6 @@ export default function App() {
                    BPM {speed}
                  </button>
                ))}
-               
-                <div className="w-px h-6 bg-slate-200 mx-1 sm:mx-2"></div>
-                <button 
-                  onClick={() => setSubdivisionEnabled(!subdivisionEnabled)}
-                  className={`px-3 text-[10px] sm:text-xs font-bold transition-colors ${subdivisionEnabled ? 'text-amber-500' : 'text-slate-400'}`}
-                >
-                  ♪ 8分音符
-                </button>
             </div>
           </div>
 
@@ -735,21 +737,11 @@ export default function App() {
           >
             {!isRecording && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-10 pointer-events-none px-4 text-center">
-                <Pointer className="w-8 h-8 sm:w-10 sm:h-10 mb-3 opacity-50 animate-bounce" />
                 <p className="text-sm sm:text-base font-bold text-slate-500">點選上方譜例，並按下開始訓練</p>
                 <p className="text-[10px] sm:text-xs mt-2 bg-slate-100 px-3 py-1 rounded-full">💡 只要所有圓點都點成「綠色」就能拿到皇冠！</p>
               </div>
             )}
             
-            <div className="absolute bottom-2 right-3 sm:bottom-4 sm:right-4 flex flex-col items-end text-[10px] sm:text-xs text-slate-400 z-10 bg-white/80 p-1.5 rounded-lg shadow-sm">
-              <div className="flex gap-1.5 sm:gap-2 mb-1">
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-400"></span>完美</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-orange-400"></span>早打</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-400"></span>晚打</span>
-              </div>
-              容錯率: {mode === 'pro' ? '±15ms' : '±30ms'}
-            </div>
-
             <canvas 
               ref={canvasRef}
               width={800} 
@@ -760,22 +752,7 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="bg-white border-t border-slate-100 p-4 pb-6 sm:p-6 sm:pb-10 flex items-center justify-center gap-12 sm:gap-20 shrink-0">
-        
-        <div className="flex flex-col items-center gap-1 sm:gap-2">
-          <button 
-            onClick={(e) => { e.stopPropagation(); setGuideTrackEnabled(!guideTrackEnabled); }}
-            className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all ${
-              guideTrackEnabled ? 'bg-amber-100 text-amber-600 shadow-md sm:shadow-lg shadow-amber-100' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            <Headphones className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-          <span className="text-[10px] sm:text-xs font-bold text-slate-500">
-            {guideTrackEnabled ? '輔助音開' : '輔助音關'}
-          </span>
-        </div>
-
+      <footer className="bg-white border-t border-slate-100 p-4 pb-6 sm:p-6 sm:pb-10 flex items-center justify-center shrink-0">
         <div className="flex flex-col items-center gap-1 sm:gap-2">
           <button 
             onClick={(e) => { e.stopPropagation(); toggleRecording(); }}
@@ -793,16 +770,6 @@ export default function App() {
             {isRecording ? '停止' : '開始'}
           </span>
         </div>
-
-        <div className="flex flex-col items-center gap-1 sm:gap-2 pointer-events-none opacity-60">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center bg-slate-100 text-slate-500">
-            <Pointer className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <span className="text-[10px] sm:text-xs font-bold text-slate-500">
-            點擊畫面打擊
-          </span>
-        </div>
-
       </footer>
       
       <style>{`
