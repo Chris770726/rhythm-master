@@ -558,6 +558,7 @@ export default function App() {
       }
     });
 
+    // 縮小 0.85 倍的打擊點 (落點: 12 * 0.85 = 10.2)
     engineRef.current.actualHits.forEach(hit => {
       const x = hitLineX + (hit.time - now) * pixelsPerSecond;
       if (x > -50 && x < width + 50) {
@@ -618,11 +619,13 @@ export default function App() {
         continue;
       }
 
+      // 擴散特效也依比例縮小 (18*0.85 = 15.3, 36*0.85 = 30.6)
       const radius = 15.3 + (age / 300) * 30.6;
       const opacity = 1 - (age / 300);
       
       ctx.beginPath();
-      ctx.arc(effect.x, height / 2, radius, 0, 2 * Math.PI);
+      // 將原本的 effect.x 改為 hitLineX，讓動畫永遠精準鎖定在基準線上
+      ctx.arc(hitLineX, height / 2, radius, 0, 2 * Math.PI);
       
       if (effect.type === 'success') {
         ctx.fillStyle = `rgba(74, 222, 128, ${opacity})`;
