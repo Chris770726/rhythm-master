@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Square, Trophy, Music } from 'lucide-react';
 
-// --- 30條經典節奏譜例資料庫 ---
-const CIRCLE_NUMBERS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','㉑','㉒','㉓','㉔','㉕','㉖','㉗','㉘','㉙','㉚'];
+// --- 32條經典節奏譜例資料庫 ---
+const CIRCLE_NUMBERS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','㉑','㉒','㉓','㉔','㉕','㉖','㉗','㉘','㉙','㉚','㉛','㉜'];
 
 const PATTERNS_DATA = [
   { id: 1, sym: '♩', name: '四分音符', offsets: [0] },
   { id: 2, sym: '𝄾 ♪', name: '休八', offsets: [0.5] },
   { id: 3, sym: '♫', name: '二八', offsets: [0, 0.5] },
+  { id: 4, sym: '♪ 𝄾', name: '八休', offsets: [0] },
   { id: 5, sym: '♬♬', name: '四十六', offsets: [0, 0.25, 0.5, 0.75] },
   { id: 6, sym: '♬♪', name: '前十六', offsets: [0, 0.25, 0.5] },
   { id: 7, sym: '♪♬', name: '後十六', offsets: [0, 0.5, 0.75] },
@@ -35,6 +36,7 @@ const PATTERNS_DATA = [
   { id: 29, sym: '‿♬♪', name: '連休二', offsets: [0.25, 0.5] },
   { id: 30, sym: '♬‿♬♪', name: '切分連', offsets: [0, 0.25, 0.75] },
   { id: 31, sym: '♪♬‿♬', name: '後連反', offsets: [0, 0.5, 0.75] },
+  { id: 32, sym: '𝄽', name: '休止', offsets: [] },
 ];
 
 const RHYTHM_PATTERNS = PATTERNS_DATA.map(p => ({
@@ -55,6 +57,7 @@ export default function App() {
   // 永久預設開啟設定
   const guideTrackEnabled = true;
   const subdivisionEnabled = true;
+  const mode = 'normal';
 
   const hitAreaRef = useRef(null);
   const lastHitTimeRef = useRef(0);
@@ -92,6 +95,7 @@ export default function App() {
     expectedHits: [], 
     actualHits: [],   
     expectedBeats: [], 
+    lookahead: 25.0, 
     scheduleAheadTime: 3.0, 
     cycleCounter: 0,
     activeCycles: {} 
@@ -279,7 +283,6 @@ export default function App() {
       playClick(audioCtxRef.current.currentTime, 'crown');
     }
 
-    // 發放皇冠時帶上 x, y 坐標
     visualEffectsRef.current.push({ time: Date.now(), type: 'crown', x: cw / 2, y: ch / 2 });
   };
 
@@ -442,28 +445,26 @@ export default function App() {
           const newStreak = s.streak + 1;
           return { hits: s.hits + 1, streak: newStreak, maxStreak: Math.max(s.maxStreak, newStreak) };
         });
-        
-        // 特效不再綁定死板的 x 座標，渲染時會動態對齊基準線
-        visualEffectsRef.current.push({ time: Date.now(), type: 'success' }); 
+        visualEffectsRef.current.push({ time: Date.now(), type: 'success', x: 200 }); 
 
       } else if (diff < 0) {
         expected.status = 'early';
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'early' });
         playClick(audioCtxRef.current.currentTime, 'fail');
         setStats(s => ({ ...s, streak: 0 }));
-        visualEffectsRef.current.push({ time: Date.now(), type: 'early' }); 
+        visualEffectsRef.current.push({ time: Date.now(), type: 'early', x: 200 }); 
       } else {
         expected.status = 'late';
         engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'late' });
         playClick(audioCtxRef.current.currentTime, 'fail');
         setStats(s => ({ ...s, streak: 0 }));
-        visualEffectsRef.current.push({ time: Date.now(), type: 'late' }); 
+        visualEffectsRef.current.push({ time: Date.now(), type: 'late', x: 200 }); 
       }
     } else {
       engineRef.current.actualHits.push({ time: adjustedHitTime, status: 'noise' });
       playClick(audioCtxRef.current.currentTime, 'fail');
       setStats(s => ({ ...s, streak: 0 }));
-      visualEffectsRef.current.push({ time: Date.now(), type: 'late' }); 
+      visualEffectsRef.current.push({ time: Date.now(), type: 'late', x: 200 }); 
     }
   };
 
@@ -530,7 +531,7 @@ export default function App() {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // 1.2 倍的圓點 (預期點: 14 * 1.2 = 16.8)
+    // 再縮小 0.85 倍的圓點
     engineRef.current.expectedHits.forEach(expected => {
       const x = hitLineX + (expected.time - now) * pixelsPerSecond;
       
@@ -541,7 +542,7 @@ export default function App() {
 
       if (x > -50 && x < width + 50) {
         ctx.beginPath();
-        ctx.arc(x, height / 2, 16.8, 0, 2 * Math.PI); 
+        ctx.arc(x, height / 2, 14.3, 0, 2 * Math.PI); 
         
         if (expected.expired && !expected.status) {
           ctx.strokeStyle = '#EF4444';
@@ -557,12 +558,12 @@ export default function App() {
       }
     });
 
-    // 1.2 倍的打擊點 (落點: 10 * 1.2 = 12)
+    // 縮小 0.85 倍的打擊點 (落點: 12 * 0.85 = 10.2)
     engineRef.current.actualHits.forEach(hit => {
       const x = hitLineX + (hit.time - now) * pixelsPerSecond;
       if (x > -50 && x < width + 50) {
          ctx.beginPath();
-         ctx.arc(x, height / 2, 12, 0, 2 * Math.PI); 
+         ctx.arc(x, height / 2, 10.2, 0, 2 * Math.PI); 
          
          if (hit.status === 'perfect') {
             ctx.fillStyle = '#4ADE80'; 
@@ -618,16 +619,13 @@ export default function App() {
         continue;
       }
 
-      // 擴散特效改為 1.2 倍 (15*1.2 = 18, 30*1.2 = 36)
-      const radius = 18 + (age / 300) * 36;
+      // 擴散特效也依比例縮小 (18*0.85 = 15.3, 36*0.85 = 30.6)
+      const radius = 15.3 + (age / 300) * 30.6;
       const opacity = 1 - (age / 300);
       
-      // 動態讀取當下的基準線 X 座標 (如果沒有帶入 x，就精準對齊基準線)
-      const ex = effect.x !== undefined ? effect.x : hitLineX;
-      const ey = effect.y !== undefined ? effect.y : height / 2;
-
       ctx.beginPath();
-      ctx.arc(ex, ey, radius, 0, 2 * Math.PI);
+      // 將原本的 effect.x 改為 hitLineX，讓動畫永遠精準鎖定在基準線上
+      ctx.arc(hitLineX, height / 2, radius, 0, 2 * Math.PI);
       
       if (effect.type === 'success') {
         ctx.fillStyle = `rgba(74, 222, 128, ${opacity})`;
@@ -647,9 +645,9 @@ export default function App() {
     return () => cancelAnimationFrame(requestAnimationFrameRef.current);
   }, [renderLoop]);
 
-  // 根據新的 30 條譜例調整分頁邏輯
+  // 過濾當前分頁要顯示的譜例
   const displayedPatterns = RHYTHM_PATTERNS.map((p, i) => ({ ...p, originalIndex: i })).filter((p) => {
-    return activeTab === 'basic' ? p.originalIndex < 6 : p.originalIndex >= 6;
+    return activeTab === 'basic' ? p.originalIndex < 7 : p.originalIndex >= 7;
   });
 
   return (
@@ -711,13 +709,13 @@ export default function App() {
                 onClick={() => setActiveTab('basic')} 
                 className={`text-[11px] sm:text-xs font-bold uppercase tracking-widest pb-2 border-b-2 transition-colors ${activeTab === 'basic' ? 'text-red-500 border-red-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
              >
-                基礎挑戰 (1-6)
+                基礎挑戰 (1-7)
              </button>
              <button 
                 onClick={() => setActiveTab('advanced')} 
                 className={`text-[11px] sm:text-xs font-bold uppercase tracking-widest pb-2 border-b-2 transition-colors ${activeTab === 'advanced' ? 'text-red-500 border-red-500' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
              >
-                進階挑戰 (7-30)
+                進階挑戰 (8-32)
              </button>
           </div>
 
@@ -769,7 +767,7 @@ export default function App() {
         >
           <div className="flex justify-center items-end mb-3 relative z-20 w-full" onPointerDown={(e) => e.stopPropagation()}>
             <div className="flex items-center bg-white p-1 rounded-full border border-slate-200 shadow-sm shrink-0">
-               {[68, 100, 128, 135, 142].map(speed => (
+               {[68, 128, 135, 142].map(speed => (
                  <button
                    key={speed}
                    onClick={() => setBpm(speed)}
